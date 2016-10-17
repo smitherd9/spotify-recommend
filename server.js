@@ -11,10 +11,7 @@ var getFromApi = function(endpoint, args) {
            .end(function(response) {
                 if (response.ok) {
                     emitter.emit('end', response.body);
-                    //  var artist = response.body.artists.items[0];
                     console.log(response.body);
-                    //  unirest.get('https://api.spotify.com/v1/artists' + artist.id + '/related-artists');
-                    // unirest.get('https://api.spotify.com/v1/artists' + artist.id + '/related-artists');
                 }
                 else {
                     emitter.emit('error', response.code);
@@ -25,12 +22,12 @@ var getFromApi = function(endpoint, args) {
 
 var getRelated = function(endpoint, artistId) {
     var emitter = new events.EventEmitter();
-    // var artist = response.body;
     unirest.get('https://api.spotify.com/v1/artists' + artistId + '/related-artists')
             .qs(artistId)
             .end(function(response){
                 if (response.ok) {
                     emitter.emit('end', response.body);
+                    console.log(response.body);
                 }
                 else {
                     emitter.emit('error', response.code);
@@ -51,57 +48,42 @@ app.get('/search/:name', function(req, res) {
 
     searchReq.on('end', function(item) {
         var artist = item.artists.items[0];
-        var artistId = item.artists.id;
-        res.json(artist);
-        getRelated('/artists/', artistId);
-        unirest.get('https://api.spotify.com/v1/artists' + artistId + '/related-artists');
+        var artistId = artist.id;
         
+        var relatedReq = getFromApi('artists/' + artistId + '/related-artists');
+        relatedReq.on('end', function(relItem){
+            artist.related = relItem.artists;
+        var p = [];
+        artist.related.forEach(function(art){
+            p.push(new Promise(function(resolve, reject){
+                var tracksReq = getFromApi('artists/' + art.id + '/top-tracks', {'country':'us'});
+                tracksReq.on('end', function(topTracks){
+                    art.tracks = topTracks.tracks;
+                    console.log(art.tracks);
+                    resolve();
+                });
+                tracksReq.on('error', function(code){
+                        reject();
+                    });
+                 }));
+            
+        });
+            Promise.all(p).then(function(){
+                res.json(artist);
+            });
+        });
+        
+        relatedReq.on('error', function(code){
+            res.sendStatus(code);
+        });
     });
     
-    // searchReq.on('end', function(item) {
-    //     var artist = item.artists.items[0];
-    //     var artistId = item.artists.id;
-    //     res.json(artist);
-    //     getRelated('/artists/', {
-    //         q: artistId,
-    //         limit: 5,
-    //         type: 'artist'
-    //     });
-    //     unirest.get('https://api.spotify.com/v1/artists' + artistId + '/related-artists');
-        
-    // });
-
     searchReq.on('error', function(code) {
         res.sendStatus(code);
     });
     
-    // app.get('/artists/', function(req, res){
-    // var searchReq = getRelated('artists/:id/related-artists', {
-    //     q: req.params.id,
-    //     limit: 5,
-    //     type: 'artist'
-    // });
-});
-
-
-
-// app.get('/artists/:id', function(req, res){
-//     var searchReq = getRelated('artists/:id/related-artists', {
-//         q: req.params.id,
-//         limit: 5,
-//         type: 'artist'
-//     });
     
-    // searchReq.on('end', function(item) {
-    //     var artist = item.artists.items;
-    //     res.json(artist);
-    // });
-
-    // searchReq.on('error', function(code) {
-    //     res.sendStatus(code);
-    // });
-// });
-
+});
 
 
 app.listen(process.env.PORT || 8080);
